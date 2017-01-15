@@ -1,0 +1,358 @@
+%-----------------------------------------------------------------------------
+%
+%               Template for sigplanconf LaTeX Class
+%
+% Name:         sigplanconf-template.tex
+%
+% Purpose:      A template for sigplanconf.cls, which is a LaTeX 2e class
+%               file for SIGPLAN conference proceedings.
+%
+% Guide:        Refer to "Author's Guide to the ACM SIGPLAN Class,"
+%               sigplanconf-guide.pdf
+%
+% Author:       Paul C. Anagnostopoulos
+%               Windfall Software
+%               978 371-2316
+%               paul@windfall.com
+%
+% Created:      15 February 2005
+%
+%-----------------------------------------------------------------------------
+
+\documentclass[nocopyrightspace,blockstyle,numbers]{sigplanconf}
+
+% The following \documentclass options may be useful:
+
+% preprint      Remove this option only once the paper is in final form.
+% 10pt          To set in 10-point type instead of 9-point.
+% 11pt          To set in 11-point type instead of 9-point.
+% numbers       To obtain numeric citation style instead of author/year.
+
+\usepackage{amsmath}
+\usepackage[utf8]{inputenc}
+
+\newcommand{\cL}{{\cal L}}
+
+\begin{document}
+
+\special{papersize=8.5in,11in}
+\setlength{\pdfpageheight}{\paperheight}
+\setlength{\pdfpagewidth}{\paperwidth}
+
+\conferenceinfo{CONF 'yy}{Month d--d, 20yy, City, ST, Country}
+\copyrightyear{20yy}
+\copyrightdata{978-1-nnnn-nnnn-n/yy/mm}
+\copyrightdoi{nnnnnnn.nnnnnnn}
+
+% Uncomment the publication rights you want to use.
+%\publicationrights{transferred}
+%\publicationrights{licensed}     % this is the default
+%\publicationrights{author-pays}
+
+%\titlebanner{banner above paper title}        % These are ignored unless
+%\preprintfooter{short description of paper}   % 'preprint' option specified.
+
+\title{Coq's Prolog and application to defining semi-automatic tactics}
+%\subtitle{Subtitle Text, if any}
+
+\authorinfo{Théo Zimmermann \and Hugo Herbelin}
+           {IRIF, Université Paris Diderot, Université Sorbonne Paris-Cité\\ $\Pi R ^2$, INRIA}
+           {theo.zimmermann@univ-paris-diderot.fr / hugo.herbelin@inria.fr}
+%\authorinfo{Name1}
+%           {Affiliation1}
+%           {Email1}
+%\authorinfo{Name2\and Name3}
+%           {Affiliation2/3}
+%           {Email2/3}
+
+\maketitle
+
+\begin{abstract}
+  We report on a work-in-progress to re-implement Coq's \texttt{apply}
+  tactic in order to embed some form of simple automation. We design
+  it in a declarative way, relying on \texttt{typeclasses eauto}, a tactic
+  which gives access to the proof-search mechanism behind type classes.
+  We qualify this mechanism of ``Coq's Prolog'' and describe it in a
+  generic way and explain how it can be used to support the
+  construction of automatic and semi-automatic tactics.
+\end{abstract}
+
+%\category{CR-number}{subcategory}{third-level}
+
+% general terms are not compulsory anymore,
+% you may leave them out
+%\terms
+%term1, term2
+
+\keywords
+apply, automation, Coq, proof assistant, reflection,
+type theory, views.
+
+\section{Introduction}
+
+Since version 8.2 \cite{coq86manual}, Coq has included a type class
+mechanism which can intervene during type-inference. The resolution
+phase of this mechanism is also accessible via the user-side tactic
+\texttt{typeclasses eauto}. In fact \texttt{typeclasses eauto}
+implements a general Prolog-like proof-search mechanism that can be
+instrumented to do much more. While by default, it uses the specific
+\texttt{typeclass\_instances} hint database, one can use it with
+alternative hint databases. In this case, despite the name of the
+tactic, it has nothing to do with the type class mechanism anymore
+(apart from the underlying implementation). It can be viewed as a
+re-implementation of the former \texttt{eauto} tactic, dating back
+from Coq version 5.10.
+
+Many partially automated tactics have already been built upon Coq's type
+class mechanism. One example is the re-implementation of the \texttt{rewrite}
+tactic \cite{sozeau2010new}, which relies on the mechanism in
+a second phase of constraint resolution. Another is our \texttt{transfer}
+library \cite{zimmermann}. We argue that both of these applications (and
+many others) abuse the type class mechanism, by polluting the
+\texttt{typeclass\_\\instances} hint database, when they should instead
+define their own disjoint hint databases and rely on the underlying
+Prolog-like proof-search mechanism that is made accessible via the
+\texttt{typeclasses eauto} tactic.
+
+We demonstrate the usefulness of this ``Coq's Prolog'' with a small
+re-implementation of the \texttt{apply} tactic. This tactic is parame\-trized
+by a set of ``views'' à la SSReflect \cite{gonthier} which it is
+able to apply automatically. It also demonstrates a new way of instrumenting
+\texttt{typeclasses eauto} to progress on a goal instead of solving it
+(``forward mode'', proposed in particular by Michael Soegtrop
+on the Coq-Club mailing list).
+
+\section{Presentation of Coq's Prolog}
+
+The \texttt{typeclasses eauto} tactic is documented in the chapter on
+type classes of Coq's user manual \cite[Chapter~20]{coq86manual}.
+Like \texttt{eauto}, it is possible to specify on which hint database it
+should operate using the \texttt{with myhintdb} clause.
+By default, the proof-search depth is unbounded and the traversing
+strategy is depth-first. It is also possible to limit the proof-search
+depth, and an alternative iterative-deepening traversing strategy exists.
+
+Most hints are lemmas which can be read as Prolog Horn clauses.
+For instance:
+
+\begin{verbatim}
+Lemma or_introl : forall A B, A -> A \/ B.
+\end{verbatim}
+can be read as the clause\footnote{We introduce the Prolog predicate
+  \texttt{prove} to denote the idea that the hints are used when looking
+  for a proof of a statement. When using \text{typeclasses eauto} to
+  solve type class goals, there is always a head-constant (the type class)
+  which can serve the same role as \texttt{prove} but when using it on
+  non-type-class goals, it is not necessarily the case.}:
+
+\begin{verbatim}
+prove(or(A,B)) :- prove(A).
+\end{verbatim}
+Such hints can be introduced with the \texttt{Hint Resolve} command:
+
+\begin{verbatim}
+Hint Resolve or_introl : myhintdb.
+\end{verbatim}
+
+Some more complex hints can be introduced thanks to the
+\texttt{Hint Extern} command. One very special application of
+such external hints is to put some sub-goals ``on the shelf'':
+
+\begin{verbatim}
+Hint Extern 0 (solveLater _) =>
+  unfold solveLater; shelve : myhintdb.
+\end{verbatim}
+
+The shelf is a special place in the Coq proof engine which is
+normally reserved to sub-goals that will be solved by solving other
+sub-goals that depend on them. It can be instrumented to temporarily
+store away some sub-goals that we want to keep for later (at which
+time they will be ``unshelved'').
+The ``unshelve'' tactical can be used to put back in the list of
+sub-goals to solve those which had been shelved by the tactic it is
+applied on.
+Thus, a combination of the previous external hint plus a call to
+\texttt{unshelve typeclasses eauto with myhintdb} is a way to use
+this Prolog-like proof-search mechanism in forward mode, instead of
+the normal solving mode.
+
+Finally, a control operator on the search space is available. It is
+not comparable to Prolog's cut operator in that it allows to specify
+regular expressions of search-paths which should be cut but does
+not restrict backtracking. It is still
+limited in that regular expressions can only talk about hints
+declared with \texttt{Hint Resolve} and not \texttt{Hint Extern}.
+Additionally, there is no negative expressions and even if regular
+expressions are known to be closed under complement, the construction
+requires to know all the alphabet, which is not the case here since
+new hints can be added dynamically. We can expect to see improvements
+in control operators for \texttt{typeclasses eauto} in the next versions
+of Coq. Here is an example\footnote{Be careful when using it that the
+precedence levels are not what one would expect. They should get fixed
+in Coq 8.7 but, in the meantime, the best way of writing
+forward-compatible code is to parenthesize everything.}
+of using this control operator:
+
+\begin{verbatim}
+Hint Cut [(_*) or_introl (_*) or_introl] : myhintdb.
+\end{verbatim}
+
+\section{An \texttt{apply} tactic with views}
+
+Our work is part of a larger effort to make the life of mathematicians
+using Coq easier. The specific issue we address here is to design an
+extension of the \texttt{apply} tactic which embeds some bits of
+trivial reasoning, such as reasoning modulo symmetry of equations
+(identifying \texttt{u = t} and \texttt{t = u}).
+There is already a little bit of hard-coded trivial reasoning in the
+current implementation (automatic decomposition of single-constructor
+inductive types): for instance it supports applying a theorem
+of the form \verb|A -> B /\ C| to a goal of the form \texttt{B}.
+
+SSReflect defines views which are basically small theorems of
+the form \texttt{A -> B} where \texttt{A} is a different way of
+viewing \texttt{B}. Our re-implementation of \texttt{apply} tries to
+solve the problem we were describing by allowing the user to
+parametrize it with such ``views''. Without any view, it is less
+powerful than the current implementation (because of the absence of
+decomposition of single-constructor inductive types). With many
+views, it can be much more powerful. The various levels of
+parametrization could reveal especially useful for teaching (from a
+level where everything must be done by hand, to a level where most
+details are handled automatically).
+
+Given the inspiration source we described in the previous paragraph,
+an obvious application of our work will be to support automatic
+insertion of views in the context of small scale reflection. In
+particular, it will be possible to simply register the reflection
+lemma:
+
+\begin{verbatim}
+Lemma andP : forall b1 b2 : bool,
+               reflect (b1 /\ b2) (b1 && b2).
+\end{verbatim}
+in a special hint database and \texttt{apply} will know about it
+and use it when necessary.
+
+There are two main ideas in our implementation. The first is that
+we are launching a proof search to prove that the theorem
+we wish to apply implies the current goal:
+
+\begin{verbatim}
+?prove : arrow theorem goal
+\end{verbatim}
+where \texttt{arrow} is a relation that reifies Coq's implication.
+We use it because otherwise the proof-search mechanism would introduce
+the premise \texttt{theorem} in the proof context and then try
+to prove \texttt{goal} with it, and this is not what we want.
+
+The second is that although we cannot actually prove this implication
+most of the time, we can provide an incomplete proof and let the
+user fill the holes (this is after all the principle of
+\texttt{apply}):
+
+\begin{verbatim}
+solveLater A -> arrow B C -> arrow (A -> B) C
+\end{verbatim}
+where \texttt{solveLater} is a dummy constant introduced to call the
+external hint we described earlier, which will shelve the sub-goal
+\texttt{A} until the full search succeeds and then unshelve it for the
+user to prove. In fact, because the conclusion \texttt{B} might be
+dependent on the premise \texttt{A}, we rather write:
+
+\begin{verbatim}
+forall (t : T), arrow (U t) V ->
+  arrow (forall x : T, U x) V
+\end{verbatim}
+and then shelve \texttt{t}.
+A few other generic rules are present, one of them allowing to
+go under quantifiers and, of course, the reflexivity of arrow:
+
+\begin{verbatim}
+(forall x : A, arrow (f x) (g x)) ->
+  arrow (forall x : A, f x) (forall x : A, g x)
+
+arrow T T
+\end{verbatim}
+
+With these rules only, we can reproduce the behavior of
+\texttt{apply}, except for the built-in handling of
+single-constructor inductive types.
+Actually already at that point, we do not reproduce the
+exact same behavior because our implementation allows
+applying a theorem \texttt{forall x y, P x y}
+to a goal \texttt{forall x, P x 0}.
+
+With this basic infrastructure in place, we can start
+adding views, such as:
+
+\begin{verbatim}
+arrow P P' -> arrow (P /\ Q) P'
+arrow Q Q' -> arrow (P /\ Q) Q'
+\end{verbatim}
+which will be useful in emulating the current behavior
+of \texttt{apply}. We can also add a very simple rule to
+handle symmetry (one could think of more complex and
+powerful ways):
+
+\begin{verbatim}
+arrow (u = t) (t = u)
+\end{verbatim}
+and finally, we register some more generic rules like:
+
+\begin{verbatim}
+reflect P b -> arrow P (b = true)
+reflect b P -> arrow (b = true) P
+\end{verbatim}
+so that people can easily extend the hint database with
+existing reflection lemmas such as the one seen above.
+
+\section{Conclusion}
+
+This work is very preliminary but shows an interesting path
+to removing some of the hindrances there are in using
+both SSReflect and vanilla Coq.
+It is also a demonstration of the power of
+\texttt{typeclasses eauto}, even when not working with
+type classes.
+Sometimes, the type class mechanism has been used while what
+was really wanted was this Coq's Prolog that it gives access to.
+One such example is the implementation of \texttt{rewrite}:
+it probably could and should be based on a specific hint
+database instead of the \texttt{typeclass\_instances} database.
+
+We are planning first to continue to test and improve our
+re-implementation of \texttt{apply}. We would in particular like
+to have views for applying a theorem modulo commutativity /
+associativity. We are also planning to merge this work with our
+previous work on applying theorems modulo isomorphisms
+\cite{zimmermann}. A lot of ideas from this earlier work were
+reused here and the two implementations could very likely be
+combined together.
+
+%\appendix
+%\section{Appendix Title}
+
+%This is the text of the appendix, if you need one.
+
+%\acks
+
+%Acknowledgments, if needed.
+
+% We recommend abbrvnat bibliography style.
+
+\bibliography{coq-prolog}
+\bibliographystyle{abbrvnat}
+
+% The bibliography should be embedded for final submission.
+
+%\begin{thebibliography}{}
+%\softraggedright
+
+%\bibitem[Smith et~al.(2009)Smith, Jones]{smith02}
+%P. Q. Smith, and X. Y. Jones. ...reference text...
+
+%\end{thebibliography}
+
+
+\end{document}

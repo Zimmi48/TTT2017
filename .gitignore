@@ -1,0 +1,11 @@
+# Emacs
+*~
+
+# Elm
+src/slides/elm-stuff/
+
+# LaTeX
+*.aux
+*.bbl
+*.blg
+*.log
