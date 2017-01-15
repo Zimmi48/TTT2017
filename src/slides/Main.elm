@@ -294,7 +294,7 @@ and can be instrumented.
 """
     , Html.footer
         [ [ marginTop (px 80) ] |> asPairs |> Html.Attributes.style ]
-        [ md "**Cf.** the abstract for this talk." ]
+        [ md "**Cf.** [the abstract](http://www.theozimmermann.net/TTT2017/abstract/coq-prolog.pdf) for this talk." ]
     ]
         |> Html.div []
         |> \x -> [ x ]

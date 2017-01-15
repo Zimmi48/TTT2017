@@ -15834,7 +15834,7 @@ var _Zimmi48$ttt2017$Main$typeclasses = function (x) {
 					},
 					{
 						ctor: '::',
-						_0: _Zimmi48$ttt2017$Main$md('**Cf.** the abstract for this talk.'),
+						_0: _Zimmi48$ttt2017$Main$md('**Cf.** [the abstract](http://www.theozimmermann.net/TTT2017/abstract/coq-prolog.pdf) for this talk.'),
 						_1: {ctor: '[]'}
 					}),
 				_1: {ctor: '[]'}
