@@ -191,7 +191,7 @@ of Coq. Here is an example\footnote{Be careful when using it that the
 precedence levels are not what one would expect. They should get fixed
 in Coq 8.7 but, in the meantime, the best way of writing
 forward-compatible code is to parenthesize everything.}
-of using this control operator:
+of using this control operator to forbid any proof using \texttt{or\_introl} twice:
 
 \begin{verbatim}
 Hint Cut [(_*) or_introl (_*) or_introl] : myhintdb.
@@ -228,8 +228,8 @@ particular, it will be possible to simply register the reflection
 lemma:
 
 \begin{verbatim}
-Lemma andP : forall b1 b2 : bool,
-               reflect (b1 /\ b2) (b1 && b2).
+Lemma andP : forall b1 b2 : bool, reflect
+  (b1 = true /\ b2 = true) ((b1 && b2) = true).
 \end{verbatim}
 in a special hint database and \texttt{apply} will know about it
 and use it when necessary.
@@ -241,7 +241,7 @@ we wish to apply implies the current goal:
 \begin{verbatim}
 ?prove : arrow theorem goal
 \end{verbatim}
-where \texttt{arrow} is a relation that reifies Coq's implication.
+where \texttt{arrow} is a relation that is definitionally equal to Coq's implication.
 We use it because otherwise the proof-search mechanism would introduce
 the premise \texttt{theorem} in the proof context and then try
 to prove \texttt{goal} with it, and this is not what we want.
